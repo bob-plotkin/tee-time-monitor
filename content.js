@@ -1,4 +1,4 @@
-// content.js — Tee Time Monitor v2.0
+// content.js — Tee Time Monitor v2.10
 // Injected into westchestercountyph.ezlinksgolf.com
 // Handles UI, Angular-aware DOM interaction, result scanning, and booking flow.
 // Does NOT reload the page — re-triggers the Angular search each cycle.
@@ -10,6 +10,8 @@
 const PANEL_ID    = 'ttm-panel';
 const STORE_KEY   = 'ttmSettings';
 const TARGET_HASH = '#/search';
+const VERSION     = '2.15';
+const BUILT       = new Date().toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
 
 // Course definitions: id used in storage, label shown in UI, value to match in DOM text
 const COURSES = [
@@ -42,12 +44,13 @@ const DEFAULTS = {
 
 // ─── State ────────────────────────────────────────────────────────────────────
 
-let CFG         = { ...DEFAULTS };   // active settings
-let active      = false;             // monitoring running?
-let cycleId     = null;              // setTimeout handle
-let tickId      = null;              // countdown setInterval handle
-let keepaliveId = null;              // setInterval for session keepalive
-let nextTick    = 0;                 // epoch ms of next scheduled cycle
+let CFG          = { ...DEFAULTS };   // active settings
+let active       = false;             // monitoring running?
+let cycleRunning = false;             // guard against concurrent runCycle calls
+let cycleId      = null;              // setTimeout handle
+let tickId       = null;             // countdown setInterval handle
+let keepaliveId  = null;             // setInterval for session keepalive
+let nextTick     = 0;                // epoch ms of next scheduled cycle
 
 // ─── Utilities ───────────────────────────────────────────────────────────────
 
@@ -206,6 +209,8 @@ function buildPanel() {
         <div id="ttm-lastchk"   class="ttm-small"></div>
       </div>
 
+      <div class="ttm-version">v${VERSION} &nbsp;·&nbsp; ${BUILT}</div>
+
     </div>`;
 
   document.body.appendChild(panel);
@@ -306,6 +311,7 @@ async function startMonitor() {
 }
 
 function stopMonitor() {
+  log('stopMonitor called', active ? '(was active)' : '(already stopped)');
   active = false;
   clearTimeout(cycleId);
   clearInterval(tickId);
@@ -360,17 +366,23 @@ async function pingSession() {
 // ─── Core Cycle ───────────────────────────────────────────────────────────────
 
 async function runCycle(manual = false) {
+  if (cycleRunning) {
+    dbg('runCycle skipped — previous cycle still running');
+    return;
+  }
+  cycleRunning = true;
   log(`Cycle start — date:${CFG.date} from:${CFG.timeFrom} to:${CFG.timeTo} players:${CFG.players} courses:[${CFG.courses}]`);
   setStatus('🔍 Searching…');
 
   try {
-    // 1. Apply filters + trigger search
+    // 1. Apply static filters (date, players, courses, pass type)
     await applyFilters();
 
-    // 2. Wait for Angular to render results
-    await waitForResults();
+    // 2. Force a fresh search and wait for results to settle (9s)
+    //    forceSearchRefresh() includes its own full wait — scan only after it returns
+    await forceSearchRefresh();
 
-    // 3. Scan rendered results
+    // 3. Scan rendered results — guaranteed to run after full 9s refresh wait
     const matches = findMatches();
     const now = new Date().toLocaleTimeString();
     const el = ge('ttm-lastchk');
@@ -421,6 +433,8 @@ async function runCycle(manual = false) {
   } catch (err) {
     warn('Cycle error:', err);
     setStatus(`Error: ${err.message}`, 'ttm-warn');
+  } finally {
+    cycleRunning = false;
   }
 }
 
@@ -489,11 +503,12 @@ async function applyFilters() {
       await sleep(300);
 
       // Find and click the option matching target count
+      // Use MouseEvent dispatch to avoid CSP javascript: href violation
       const options = qsa('.dropdown-menu a.ng-binding');
       dbg('Dropdown options:', options.map(a => a.textContent.trim()));
       const opt = options.find(a => parseInt(a.textContent.trim()) === target);
       if (opt) {
-        opt.click();
+        opt.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
         log('Players set to:', target);
         await sleep(300);
       } else {
@@ -546,11 +561,40 @@ async function applyFilters() {
 
   await sleep(300);
 
-  // ── Force Search Refresh ──────────────────────────────────────────────────
-  // The most reliable way to force Angular to re-run the search is to nudge
-  // the end-time input: add 1 hour, wait for results, then restore.
-  // This fires the site's own search-controller.search() every single cycle.
-  await forceSearchRefresh();
+  // ── Time Range Slider ─────────────────────────────────────────────────────
+  // Site uses ngrs-range-slider (Angular Range Slider directive).
+  // Values are in minutes since midnight: 300=5AM, 1140=7PM, 540=9AM, 660=11AM
+  setTimeSlider();
+
+  // Filters applied — forceSearchRefresh() will trigger the actual search in runCycle
+}
+
+// ─── Time Slider ──────────────────────────────────────────────────────────────
+// Content scripts cannot access the page's 'angular' global (isolated world).
+// Delegates to background.js which uses executeScript(world:'MAIN') to reach it.
+// Confirmed scope props: modelMin/modelMax, bounds: min=300 (5AM) max=1140 (7PM)
+
+async function setTimeSlider() {
+  const SLIDER_MIN = 300;
+  const SLIDER_MAX = 1140;
+  const fromMins = Math.max(SLIDER_MIN, toMins(CFG.timeFrom));
+  const toMins_  = Math.min(SLIDER_MAX, toMins(CFG.timeTo));
+
+  return new Promise(resolve => {
+    chrome.runtime.sendMessage(
+      { action: 'setTimeSlider', fromMins, toMins: toMins_ },
+      response => {
+        if (chrome.runtime.lastError) {
+          dbg('Time slider msg error:', chrome.runtime.lastError.message);
+        } else if (response?.ok) {
+          log(`Time slider set: ${CFG.timeFrom}–${CFG.timeTo} (${fromMins}–${toMins_})`);
+        } else {
+          dbg('Time slider not set:', response?.reason || 'no response');
+        }
+        resolve();
+      }
+    );
+  });
 }
 
 // ─── Force Search Refresh ─────────────────────────────────────────────────────
@@ -558,55 +602,41 @@ async function applyFilters() {
 // Each change triggers Angular's search pipeline, guaranteeing fresh results.
 
 async function forceSearchRefresh() {
-  const [endH, endM] = CFG.timeTo.split(':').map(Number);
+  // Strategy: toggle the FIRST selected course checkbox off then back on.
+  // We confirmed course checkboxes reliably trigger Angular's search pipeline.
+  // Sequence: uncheck → wait 1s → recheck → wait 9s for results to render.
 
-  // Compute bumped time (cap at 23:00 so we don't wrap midnight)
-  const bumpH     = Math.min(endH + 1, 23);
-  const bumpTime  = `${String(bumpH).padStart(2,'0')}:${String(endM).padStart(2,'0')}`;
-  const [yr, mo, dy] = CFG.date.split('-');
-
-  // The site's time range is controlled by a jQuery UI slider with two hidden
-  // inputs that hold the selected start/end minutes-since-midnight.
-  // Changing pickerDate also re-runs the search — use that as the toggle.
-  const dateInput = document.getElementById('pickerDate')
-    || document.getElementById('mobilePickerDate');
-
-  if (dateInput) {
-    // Step 1: set date to bump value (adds 1 day then restores — lightweight)
-    const origVal = dateInput.value; // e.g. "04/18/2026"
-
-    // Compute a harmless bump date (same date, just re-set to force Angular)
-    // Easier: just re-set the same date — Angular fires if we blur correctly
-    // But for reliability, flip the date +1 then back
-    const bumpDate = new Date(+yr, +mo - 1, +dy + 1);
-    const bumpMM   = String(bumpDate.getMonth() + 1).padStart(2, '0');
-    const bumpDD   = String(bumpDate.getDate()).padStart(2, '0');
-    const bumpYY   = bumpDate.getFullYear();
-    const bumpStr  = `${bumpMM}/${bumpDD}/${bumpYY}`;
-
-    dbg(`Search refresh: date ${origVal} → ${bumpStr} → ${origVal}`);
-    setStatus('🔄 Refreshing search…');
-
-    // Set bumped date
-    try { window.jQuery(dateInput).datepicker('setDate', bumpDate); } catch(_) {}
-    dateInput.value = bumpStr;
-    dateInput.dispatchEvent(new Event('change', { bubbles: true }));
-    dateInput.dispatchEvent(new Event('blur',   { bubbles: true }));
-
-    await waitForResults();
-
-    // Restore original date
-    const origDate = new Date(+yr, +mo - 1, +dy);
-    try { window.jQuery(dateInput).datepicker('setDate', origDate); } catch(_) {}
-    dateInput.value = origVal;
-    dateInput.dispatchEvent(new Event('change', { bubbles: true }));
-    dateInput.dispatchEvent(new Event('blur',   { bubbles: true }));
-
-    log(`Search refresh complete — restored date to ${origVal}`);
-  } else {
-    // Fallback: no date input found, just wait
-    dbg('No date input for search refresh — waiting for existing results');
+  const firstCourse = COURSES.find(c => CFG.courses.includes(c.id));
+  if (!firstCourse) {
+    dbg('No courses selected — cannot toggle for refresh');
+    setStatus('⏳ Waiting for results…');
+    await sleep(9000);
+    return;
   }
+
+  const cb = document.getElementById(firstCourse.cbId);
+  if (!cb) {
+    dbg('Course checkbox not found for refresh toggle:', firstCourse.cbId);
+    setStatus('⏳ Waiting for results…');
+    await sleep(9000);
+    return;
+  }
+
+  setStatus('🔄 Refreshing search…');
+  log(`Search refresh: toggling "${firstCourse.label}" checkbox`);
+
+  // Uncheck → triggers Angular search (results temporarily change)
+  cb.click();
+  await sleep(1000);
+
+  // Re-check → triggers Angular search with full correct filter set
+  cb.click();
+  log('Search refresh: checkbox restored — waiting 9s for results');
+
+  // Wait for fresh results to fully render
+  setStatus('⏳ Waiting for results…');
+  await sleep(9000);
+  log('Search refresh complete');
 }
 
 // ─── Wait for Results ─────────────────────────────────────────────────────────
@@ -653,6 +683,8 @@ function findMatches() {
   //   - A "VIEW" button
   // We anchor on VIEW buttons and walk up to the card container.
 
+  // Prefer <button> elements; include <a> but will use MouseEvent to avoid
+  // CSP violation from javascript: href navigation on anchor clicks
   const viewBtns = qsa('button, a').filter(b => /^view$/i.test(b.textContent.trim()));
   dbg('VIEW buttons found:', viewBtns.length);
 
@@ -730,8 +762,16 @@ function bookBtnIn(el) {
 async function doBook(match) {
   log('Booking:', match.timeStr, match.course || '');
 
-  // Step 1: click VIEW button on the result card
-  match.btn.click();
+  // Step 1: click VIEW button — use MouseEvent to avoid CSP javascript: href issue
+  // VIEW elements may be <a href="javascript:..."> which .click() tries to navigate
+  const safeClick = (el) => {
+    if (el.tagName === 'A') {
+      el.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    } else {
+      el.click();
+    }
+  };
+  safeClick(match.btn);
   dbg('Clicked VIEW for:', match.timeStr, match.course);
   await sleep(1800);
 
@@ -793,9 +833,10 @@ async function doBook(match) {
     await sleep(2000);
   }
 
-  // Fallback — if we reached here without an explicit error, treat as success
-  log('Booking flow complete (fallback success)');
-  return true;
+  // Fallback — reached end of wizard steps without confirmed success or error.
+  // Return false to keep monitoring rather than stopping on an uncertain state.
+  warn('Booking flow: no confirmation detected — keeping monitor running');
+  return false;
 }
 
 // Handle the "Choose Option(s)" dialog that appears after clicking VIEW.
@@ -832,7 +873,7 @@ async function handleChooseOptionsDialog() {
         // A links with single digit text are the player count options
         const opts = qsa('a.ng-binding').filter(a => /^[1-4]$/.test(a.textContent.trim()));
         const opt  = opts.find(a => parseInt(a.textContent.trim()) === target);
-        if (opt) { opt.click(); await sleep(200); }
+        if (opt) { opt.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true })); await sleep(200); }
         else warn('Dialog dropdown option not found for:', target);
       }
     } else {

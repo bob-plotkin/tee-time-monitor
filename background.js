@@ -71,6 +71,31 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
       .then(state => respond(state));
     return true;
   }
+
+  // Set the ngrs-range-slider via MAIN world (content scripts can't access
+  // page-level 'angular' global — only executeScript with world:MAIN can)
+  if (msg.action === 'setTimeSlider') {
+    chrome.scripting.executeScript({
+      target: { tabId: sender.tab.id },
+      world:  'MAIN',
+      func: (fromMins, toMins) => {
+        try {
+          const sliders = document.querySelectorAll('.ngrs-range-slider');
+          if (!sliders.length) return { ok: false, reason: 'no slider found' };
+          const scope = angular.element(sliders[0]).isolateScope();
+          if (!scope)         return { ok: false, reason: 'no isolate scope' };
+          scope.$apply(() => { scope.modelMin = fromMins; scope.modelMax = toMins; });
+          return { ok: true };
+        } catch(e) {
+          return { ok: false, reason: e.message };
+        }
+      },
+      args: [msg.fromMins, msg.toMins]
+    })
+    .then(results => respond(results?.[0]?.result || { ok: false, reason: 'no result' }))
+    .catch(e  => respond({ ok: false, reason: e.message }));
+    return true; // async response
+  }
 });
 
 async function handleStart(settings) {

@@ -186,6 +186,16 @@
 .ttm-warn    { color: #fd7e14; }
 .ttm-debug   { color: #0d6efd; }
 
+/* ── Version footer ── */
+.ttm-version {
+  text-align: center;
+  font-size: 10px;
+  color: #bbb;
+  padding: 4px 0 6px;
+  border-top: 1px solid #f0f0f0;
+  margin-top: 6px;
+}
+
 /* ── Scrollbar ── */
 .ttm-courses::-webkit-scrollbar { width: 5px; }
 .ttm-courses::-webkit-scrollbar-thumb { background: #764ba2; border-radius: 3px; }
