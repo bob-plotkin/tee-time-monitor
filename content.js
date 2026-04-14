@@ -10,7 +10,7 @@
 const PANEL_ID    = 'ttm-panel';
 const STORE_KEY   = 'ttmSettings';
 const TARGET_HASH = '#/search';
-const VERSION     = '2.15';
+const VERSION     = '2.17';
 const BUILT       = new Date().toLocaleDateString('en-US', { month:'short', day:'numeric', year:'numeric' });
 
 // Course definitions: id used in storage, label shown in UI, value to match in DOM text
@@ -564,7 +564,11 @@ async function applyFilters() {
   // ── Time Range Slider ─────────────────────────────────────────────────────
   // Site uses ngrs-range-slider (Angular Range Slider directive).
   // Values are in minutes since midnight: 300=5AM, 1140=7PM, 540=9AM, 660=11AM
-  setTimeSlider();
+  await setTimeSlider();
+
+  // Give Angular time to finish any search triggered by the slider change
+  // before the course checkbox toggle fires the final search
+  await sleep(1500);
 
   // Filters applied — forceSearchRefresh() will trigger the actual search in runCycle
 }
@@ -588,6 +592,7 @@ async function setTimeSlider() {
           dbg('Time slider msg error:', chrome.runtime.lastError.message);
         } else if (response?.ok) {
           log(`Time slider set: ${CFG.timeFrom}–${CFG.timeTo} (${fromMins}–${toMins_})`);
+          if (response.parentKeys?.length) dbg('Parent scope time keys:', response.parentKeys);
         } else {
           dbg('Time slider not set:', response?.reason || 'no response');
         }

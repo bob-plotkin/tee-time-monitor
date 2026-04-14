@@ -82,10 +82,33 @@ chrome.runtime.onMessage.addListener((msg, sender, respond) => {
         try {
           const sliders = document.querySelectorAll('.ngrs-range-slider');
           if (!sliders.length) return { ok: false, reason: 'no slider found' };
-          const scope = angular.element(sliders[0]).isolateScope();
-          if (!scope)         return { ok: false, reason: 'no isolate scope' };
-          scope.$apply(() => { scope.modelMin = fromMins; scope.modelMax = toMins; });
-          return { ok: true };
+
+          const isolate = angular.element(sliders[0]).isolateScope();
+          if (!isolate) return { ok: false, reason: 'no isolate scope' };
+
+          // Step 1: set modelMin/modelMax to move the visual handles
+          isolate.$apply(() => {
+            isolate.modelMin = fromMins;
+            isolate.modelMax = toMins;
+          });
+
+          // Step 2: call onHandleUp — this is what fires when the user releases
+          // a handle. It propagates the new values to the parent (search controller)
+          // scope and triggers the search. Without this the slider moves visually
+          // but the search doesn't re-run.
+          if (typeof isolate.onHandleUp === 'function') {
+            isolate.onHandleUp();
+          }
+
+          // Step 3: log parent scope time keys for diagnosis
+          const parentScope = angular.element(sliders[0]).scope();
+          const parentKeys = parentScope && parentScope !== isolate
+            ? Object.keys(parentScope).filter(k =>
+                !k.startsWith('$') && /time|from|to|start|end|min|max/i.test(k)
+              ).slice(0, 10)
+            : [];
+
+          return { ok: true, parentKeys };
         } catch(e) {
           return { ok: false, reason: e.message };
         }
