@@ -1,0 +1,35 @@
+{
+  "manifest_version": 3,
+  "name": "Tee Time Monitor",
+  "version": "2.0",
+  "description": "Automated tee time search and booking for Westchester County Golf",
+  "permissions": [
+    "storage",
+    "notifications",
+    "alarms",
+    "tabs",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://westchestercountyph.ezlinksgolf.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://westchestercountyph.ezlinksgolf.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": {
+    "48": "icon.png",
+    "128": "icon.png"
+  }
+}

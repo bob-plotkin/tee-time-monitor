@@ -1,0 +1,191 @@
+/* ─── Tee Time Monitor — Panel Styles ─────────────────────────────────────── */
+
+#ttm-panel {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  width: 280px;
+  background: #ffffff;
+  border: 2px solid #764ba2;
+  border-radius: 10px;
+  box-shadow: 0 6px 24px rgba(102,126,234,0.25);
+  z-index: 2147483647;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  font-size: 13px;
+  color: #2c3e50;
+}
+
+/* ── Header ── */
+.ttm-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 9px 12px;
+  background: linear-gradient(135deg, #667eea, #764ba2);
+  border-radius: 8px 8px 0 0;
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  cursor: default;
+}
+
+.ttm-hdr-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.45);
+  color: white;
+  border-radius: 4px;
+  padding: 0 7px;
+  font-size: 14px;
+  cursor: pointer;
+  line-height: 1.4;
+}
+.ttm-hdr-btn:hover { background: rgba(255,255,255,0.2); }
+
+/* ── Body ── */
+.ttm-body { padding: 10px 12px 12px; }
+
+.ttm-hidden { display: none !important; }
+
+/* ── Rows ── */
+.ttm-row { margin-bottom: 9px; }
+.ttm-row-inline {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 7px;
+}
+
+.ttm-lbl {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #555;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+}
+.ttm-row-inline .ttm-lbl { margin: 0; }
+
+/* ── Inputs ── */
+.ttm-inp {
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid #d1d5db;
+  border-radius: 5px;
+  font-size: 13px;
+  background: #fafafa;
+  color: #2c3e50;
+}
+.ttm-inp:focus { outline: none; border-color: #764ba2; }
+
+.ttm-inp-sm  { width: auto; flex: 1; }
+.ttm-inp-xs  { width: 64px; }
+
+.ttm-flex {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ttm-sep { color: #aaa; font-size: 15px; }
+
+/* ── Courses ── */
+.ttm-courses {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 8px;
+  padding: 6px 8px;
+  background: #f8f9fa;
+  border-radius: 5px;
+  margin-bottom: 5px;
+}
+.ttm-course-lbl {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-weight: normal;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ttm-cb { cursor: pointer; accent-color: #764ba2; }
+
+.ttm-course-btns { display: flex; gap: 6px; }
+.ttm-xs-btn {
+  padding: 2px 10px;
+  background: white;
+  color: #667eea;
+  border: 1px solid #667eea;
+  border-radius: 4px;
+  font-size: 11px;
+  cursor: pointer;
+}
+.ttm-xs-btn:hover { background: #667eea; color: white; }
+
+/* ── Toggle ── */
+.ttm-toggle {
+  position: relative;
+  display: inline-block;
+  width: 38px;
+  height: 20px;
+}
+.ttm-toggle input { opacity: 0; width: 0; height: 0; }
+.ttm-slider {
+  position: absolute;
+  inset: 0;
+  background: #ccc;
+  border-radius: 20px;
+  cursor: pointer;
+  transition: .25s;
+}
+.ttm-slider::before {
+  content: '';
+  position: absolute;
+  width: 14px; height: 14px;
+  left: 3px; top: 3px;
+  background: white;
+  border-radius: 50%;
+  transition: .25s;
+}
+.ttm-toggle input:checked + .ttm-slider { background: #764ba2; }
+.ttm-toggle input:checked + .ttm-slider::before { transform: translateX(18px); }
+
+/* ── Control Buttons ── */
+.ttm-controls { display: flex; gap: 6px; margin-top: 10px; }
+
+.ttm-btn-start,
+.ttm-btn-stop,
+.ttm-btn-check {
+  flex: 1;
+  padding: 7px 0;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all .2s;
+}
+.ttm-btn-start { background: linear-gradient(135deg,#667eea,#764ba2); color: white; }
+.ttm-btn-start:hover { opacity: .88; transform: translateY(-1px); }
+.ttm-btn-stop  { background: #dc3545; color: white; }
+.ttm-btn-stop:hover  { opacity: .88; }
+.ttm-btn-check { background: white; color: #667eea; border: 2px solid #667eea; }
+.ttm-btn-check:hover { background: #667eea; color: white; }
+
+/* ── Status Box ── */
+.ttm-statusbox {
+  margin-top: 9px;
+  padding: 7px 9px;
+  background: #f8f9fa;
+  border-radius: 6px;
+  text-align: center;
+}
+#ttm-status { font-weight: 600; font-size: 13px; }
+.ttm-small  { font-size: 11px; color: #888; margin-top: 2px; }
+
+/* Status variants */
+.ttm-success { color: #28a745; }
+.ttm-warn    { color: #fd7e14; }
+.ttm-debug   { color: #0d6efd; }
+
+/* ── Scrollbar ── */
+.ttm-courses::-webkit-scrollbar { width: 5px; }
+.ttm-courses::-webkit-scrollbar-thumb { background: #764ba2; border-radius: 3px; }
